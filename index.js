@@ -5,14 +5,8 @@ const TOTVS_PORT = 8015;
 const TOTVS_USER = 'REFER';
 const TOTVS_PASS = '<SJIXdJt9w';
 const PORT = process.env.PORT || 3001;
-
 const AUTH = 'Basic ' + Buffer.from(TOTVS_USER + ':' + TOTVS_PASS).toString('base64');
-
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, OPTIONS',
-  'Content-Type': 'application/json'
-};
+const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, OPTIONS', 'Content-Type': 'application/json' };
 
 function chamarTotvs(path) {
   return new Promise((resolve, reject) => {
@@ -31,20 +25,38 @@ function chamarTotvs(path) {
 
 http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') { res.writeHead(204, CORS); res.end(); return; }
+
   const url = new URL(req.url, 'http://localhost');
-  const p = url.pathname.replace(/\/proxy/, '');
+  const rawPath = url.pathname;
+
+  console.log('Request:', rawPath + url.search);
+
   try {
-    if (p === '/health' || p === '/health/') {
+    // Health check
+    if (rawPath === '/health') {
       res.writeHead(200, CORS);
       res.end(JSON.stringify({ status: 'ok', ts: new Date().toISOString() }));
       return;
     }
-    const query = url.search;
-    const totvs = await chamarTotvs('/REST/ZWSSALDOS' + p + query);
-    res.writeHead(totvs.status, CORS);
-    res.end(totvs.body);
+
+    // Repassa qualquer rota para o TOTVS
+    // /proxy/get_id/?EMP=01&ID=xxx -> /REST/ZWSSALDOS/get_id/?EMP=01&ID=xxx
+    // /proxy/get_all/?EMP=01&... -> /REST/ZWSSALDOS/get_all/?EMP=01&...
+    let totvsPath = rawPath.replace(/^\/proxy/, '');
+    if (!totvsPath.startsWith('/REST/')) {
+      totvsPath = '/REST/ZWSSALDOS' + totvsPath;
+    }
+    totvsPath += url.search;
+
+    console.log('Chamando TOTVS:', totvsPath);
+    const result = await chamarTotvs(totvsPath);
+    res.writeHead(result.status, CORS);
+    res.end(result.body);
+
   } catch(e) {
+    console.error('Erro:', e.message);
     res.writeHead(502, CORS);
     res.end(JSON.stringify({ erro: e.message }));
   }
-}).listen(PORT, () => console.log('Proxy rodando na porta ' + PORT));
+
+}).listen(PORT, () => console.log('Proxy Unita rodando na porta ' + PORT));
